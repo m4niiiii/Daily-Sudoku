@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Daily Sudoku</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React 18 + ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Babel so JSX works inline -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-neutral-50">
+  <div id="root"></div>
+
+  <script type="text/babel">
+
+    // ===== Your Daily Sudoku Component (modified for browser) =====
+    const { useEffect, useMemo, useRef, useState } = React;
+
+    const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+    function dateSeedStr(date = new Date()) {
+      const y = date.getUTCFullYear();
+      const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+      const d = String(date.getUTCDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+    function hashStringToInt(str) {
+      let h = 5381;
+      for (let i = 0; i < str.length; i++) h = ((h << 5) + h) ^ str.charCodeAt(i);
+      return (h >>> 0) || 1;
+    }
+    function mulberry32(seed) {
+      let a = seed >>> 0;
+      return function () {
+        a |= 0;
+        a = (a + 0x6D2B79F5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    function rngShuffle(arr, rng) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    const BASE_SOLUTION = [
+      [1,2,3,4,5,6,7,8,9],
+      [4,5,6,7,8,9,1,2,3],
+      [7,8,9,1,2,3,4,5,6],
+      [2,3,4,5,6,7,8,9,1],
+      [5,6,7,8,9,1,2,3,4],
+      [8,9,1,2,3,4,5,6,7],
+      [3,4,5,6,7,8,9,1,2],
+      [6,7,8,9,1,2,3,4,5],
+      [9,1,2,3,4,5,6,7,8],
+    ];
+    const deepClone = g => g.map(r => r.slice());
+    const transpose = g => {
+      const out = Array.from({length:9}, () => Array(9).fill(0));
+      for (let r=0;r<9;r++) for (let c=0;c<9;c++) out[c][r] = g[r][c];
+      return out;
+    };
+    function permuteDigits(g, map){ for (let r=0;r<9;r++) for (let c=0;c<9;c++) g[r][c] = map[g[r][c]]; }
+    function generateSolved(rng) {
+      let g = deepClone(BASE_SOLUTION);
+      const pool=[1,2,3,4,5,6,7,8,9];
+      rngShuffle(pool, rng);
+      const perm=[0,...pool]; permuteDigits(g, perm);
+      const bands=[0,1,2]; rngShuffle(bands,rng);
+      const rowOrder=[]; for(const b of bands){const rows=[0,1,2].map(x=>b*3+x); rngShuffle(rows,rng); rowOrder.push(...rows);}
+      g=rowOrder.map(r=>g[r]);
+      const stacks=[0,1,2]; rngShuffle(stacks,rng);
+      const colOrder=[]; for(const s of stacks){const cols=[0,1,2].map(x=>s*3+x); rngShuffle(cols,rng); colOrder.push(...cols);}
+      const g2=Array.from({length:9},()=>Array(9).fill(0));
+      for(let r=0;r<9;r++) for(let i=0;i<9;i++) g2[r][i]=g[r][colOrder[i]];
+      return rng()<0.5?transpose(g2):g2;
+    }
+    function isValidPlacement(grid,r,c,v){
+      if(v===0) return true;
+      for(let i=0;i<9;i++) if(grid[r][i]===v && i!==c) return false;
+      for(let i=0;i<9;i++) if(grid[i][c]===v && i!==r) return false;
+      const br=Math.floor(r/3)*3, bc=Math.floor(c/3)*3;
+      for(let i=0;i<3;i++) for(let j=0;j<3;j++){const rr=br+i,cc=bc+j;if(rr===r&&cc===c)continue;if(grid[rr][cc]===v)return false;}
+      return true;
+    }
+    function findEmptyCell(grid){for(let r=0;r<9;r++) for(let c=0;c<9;c++) if(grid[r][c]===0) return [r,c]; return null;}
+    function solveBacktrack(grid){const pos=findEmptyCell(grid); if(!pos) return true; const [r,c]=pos;
+      for(let v=1;v<=9;v++){if(isValidPlacement(grid,r,c,v)){grid[r][c]=v;if(solveBacktrack(grid))return true;grid[r][c]=0;}} return false;}
+    function countSolutions(grid,limit=2){let count=0;function backtrack(){if(count>=limit)return;const pos=findEmptyCell(grid);if(!pos){count++;return;}
+      const [r,c]=pos; for(let v=1;v<=9;v++){if(isValidPlacement(grid,r,c,v)){grid[r][c]=v;backtrack();if(count>=limit)return;grid[r][c]=0;}}}
+      backtrack(); return count;}
+    function makePuzzleFromSolution(solution,rng,targetGivens=32,symmetry=true){
+      const puzzle=deepClone(solution); const cells=Array.from({length:81},(_,i)=>i); rngShuffle(cells,rng);
+      const getRC=idx=>[Math.floor(idx/9),idx%9]; let givens=81; const minGivens=Math.max(22,Math.min(60,targetGivens));
+      for(const idx of cells){ if(givens<=minGivens) break; const [r,c]=getRC(idx); const symIdx=80-idx; const[sr,sc]=getRC(symIdx);
+        if(puzzle[r][c]===0)continue; const b1=puzzle[r][c], b2=puzzle[sr][sc]; puzzle[r][c]=0; if(symmetry&&!(r===sr&&c===sc)) puzzle[sr][sc]=0;
+        const test=deepClone(puzzle); const solutions=countSolutions(test,2); if(solutions!==1){puzzle[r][c]=b1;if(symmetry&&!(r===sr&&c===sc)) puzzle[sr][sc]=b2;}
+        else{givens--; if(symmetry&&!(r===sr&&c===sc)) givens--;}}
+      return puzzle;
+    }
+    function generateDailyPuzzle(dateStr){const seed=hashStringToInt("sudoku-"+dateStr);const rng=mulberry32(seed);
+      const solution=generateSolved(rng); const puzzle=makePuzzleFromSolution(solution,rng,32,true); return {puzzle,solution};}
+
+    function NotesGrid({notes}) {
+      return <div className="grid grid-cols-3 grid-rows-3 w-full h-full p-1 text-[10px] text-neutral-500">
+        {Array.from({length:9}).map((_,i)=><div key={i} className="flex items-center justify-center">{notes.has(i+1)?i+1:""}</div>)}
+      </div>;
+    }
+    function Cell({r,c,given,value,notes,selected,setSelected,conflict,peerHighlight}) {
+      const isSelected=selected.r===r&&selected.c===c;
+      const thickRight=(c+1)%3===0&&c!==8, thickBottom=(r+1)%3===0&&r!==8;
+      const base="w-12 h-12 flex items-center justify-center bg-white";
+      const border=`border ${thickRight?"border-r-4":""} ${thickBottom?"border-b-4":""} border-neutral-200`;
+      const selection=isSelected?"outline outline-2 outline-neutral-800 z-10":"";
+      const givenStyle=given?"text-neutral-900 font-semibold":"text-neutral-700";
+      const conflictStyle=conflict?"bg-red-100":"";
+      const matchStyle=peerHighlight?"bg-yellow-100":"";
+      return <button onClick={()=>setSelected({r,c})} className={`${base} ${border} ${selection} ${conflictStyle} ${matchStyle}`}>
+        {value!==0?<span className={`${given?givenStyle:""} text-xl`}>{value}</span>:<NotesGrid notes={notes}/>}
+      </button>;
+    }
+    function Board({initial,grid,selected,setSelected,notes,errorsOn,hasConflict,selectedVal}) {
+      return <div className="grid grid-cols-9 grid-rows-9 select-none border-4 border-neutral-900 rounded-2xl overflow-hidden shadow-lg">
+        {Array.from({length:9}).map((_,r)=>Array.from({length:9}).map((_,c)=>
+          <Cell key={`${r}-${c}`} r={r} c={c} given={initial[r][c]!==0} value={grid[r][c]} notes={notes[r][c]}
+            selected={selected} setSelected={setSelected} conflict={errorsOn&&hasConflict(r,c,grid[r][c])}
+            peerHighlight={selectedVal!==0&&grid[r][c]===selectedVal}/>))}
+      </div>;
+    }
+
+    function DailySudoku(){
+      const todayStr = useMemo(()=>dateSeedStr(new Date()),[]);
+      const storageKey = `daily-sudoku-${todayStr}`;
+      const [initial,setInitial]=useState(()=>Array.from({length:9},()=>Array(9).fill(0)));
+      const [solution,setSolution]=useState(()=>Array.from({length:9},()=>Array(9).fill(0)));
+      const [grid,setGrid]=useState(()=>Array.from({length:9},()=>Array(9).fill(0)));
+      const [notes,setNotes]=useState(()=>Array.from({length:9},()=>Array.from({length:9},()=>new Set())));
+      const [selected,setSelected]=useState({r:0,c:0});
+      const [notesMode,setNotesMode]=useState(false);
+      const [elapsed,setElapsed]=useState(0); const startTs=useRef(Date.now());
+      const [errorsOn]=useState(true); const [complete,setComplete]=useState(false);
+
+      useEffect(()=>{const saved=localStorage.getItem(storageKey);
+        if(saved){try{const data=JSON.parse(saved);setInitial(data.initial);setSolution(data.solution);setGrid(data.grid);
+          setNotes(data.notes.map(row=>row.map(arr=>new Set(arr))));}catch{const {puzzle,solution}=generateDailyPuzzle(todayStr);
+          setInitial(puzzle);setSolution(solution);setGrid(deepClone(puzzle));}}
+        else{const {puzzle,solution}=generateDailyPuzzle(todayStr);setInitial(puzzle);setSolution(solution);setGrid(deepClone(puzzle));}},[storageKey,todayStr]);
+
+      useEffect(()=>{const id=setInterval(()=>setElapsed(Date.now()-startTs.current),1000);return()=>clearInterval(id);},[]);
+      useEffect(()=>{const serializableNotes=notes.map(row=>row.map(set=>Array.from(set)));
+        localStorage.setItem(storageKey,JSON.stringify({initial,solution,grid,notes:serializableNotes}));},[grid,notes]);
+
+      function setCell(r,c,v){if(initial[r][c]!==0)return;setGrid(g=>{const ng=deepClone(g);ng[r][c]=v;return ng;});}
+      function toggleNote(r,c,v){if(initial[r][c]!==0)return;setNotes(ns=>{const nn=ns.map(row=>row.map(s=>new Set(s)));
+        if(nn[r][c].has(v))nn[r][c].delete(v);else nn[r][c].add(v);return nn;});}
+      function handleNumberInput(v){const {r,c}=selected;if(notesMode)toggleNote(r,c,v);else setCell(r,c,v);}
+      function clearCell(){setCell(selected.r,selected.c,0);}
+      function handleKey(e){if(e.key>="1"&&e.key<="9")handleNumberInput(parseInt(e.key));else if(["Backspace","Delete"].includes(e.key))clearCell();
+        else if(e.key==="ArrowUp")setSelected(s=>({r:clamp(s.r-1,0,8),c:s.c}));else if(e.key==="ArrowDown")setSelected(s=>({r:clamp(s.r+1,0,8),c:s.c}));
+        else if(e.key==="ArrowLeft")setSelected(s=>({r:s.r,c:clamp(s.c-1,0,8)}));else if(e.key==="ArrowRight")setSelected(s=>({r:s.r,c:clamp(s.c+1,0,8)}));
+        else if(e.key.toLowerCase()==="n")setNotesMode(m=>!m);} useEffect(()=>{window.addEventListener("keydown",handleKey);
+        return()=>window.removeEventListener("keydown",handleKey);});
+
+      function hasConflict(r,c,v){if(v===0)return false;
+        for(let i=0;i<9;i++)if(grid[r][i]===v&&i!==c)return true;
+        for(let i=0;i<9;i++)if(grid[i][c]===v&&i!==r)return true;
+        const br=Math.floor(r/3)*3,bc=Math.floor(c/3)*3;
+        for(let i=0;i<3;i++)for(let j=0;j<3;j++){const rr=br+i,cc=bc+j;if(rr===r&&cc===c)continue;if(grid[rr][cc]===v)return true;}
+        return false;}
+      function doHint(){for(let r=0;r<9;r++)for(let c=0;c<9;c++)if(grid[r][c]===0){setCell(r,c,solution[r][c]);return;}}
+      function doSolve(){const solved=deepClone(grid);if(!solveBacktrack(solved))return;setGrid(solved);}
+      function doReset(){setGrid(deepClone(initial));setNotes(Array.from({length:9},()=>Array.from({length:9},()=>new Set())));}
+      const seconds=Math.floor(elapsed/1000);const h=String(Math.floor(seconds/3600)).padStart(2,"0");
+      const m=String(Math.floor((seconds%3600)/60)).padStart(2,"0");const s=String(seconds%60).padStart(2,"0");
+      const selectedVal=grid[selected.r]?.[selected.c]||0;const numberCount=n=>grid.flat().filter(v=>v===n).length;
+
+      return <div className="min-h-screen w-full bg-neutral-50 text-neutral-900 p-6 flex flex-col items-center">
+        <h1 className="text-3xl font-bold mb-2">Daily Sudoku</h1>
+        <p className="mb-4 text-sm text-neutral-600">Puzzle for {todayStr} (UTC) · Timer: {h}:{m}:{s}</p>
+        <Board initial={initial} grid={grid} selected={selected} setSelected={setSelected}
+          notes={notes} errorsOn={errorsOn} hasConflict={hasConflict} selectedVal={selectedVal}/>
+        <div className="mt-4 flex flex-wrap gap-2 justify-center">
+          {[1,2,3,4,5,6,7,8,9].map(n=><button key={n} onClick={()=>handleNumberInput(n)}
+            className={`w-10 h-10 rounded-xl shadow bg-white border ${selectedVal===n?"ring-2 ring-neutral-800":""}`}>
+            {n}<span className="block text-[10px] text-neutral-500">{9-numberCount(n)}</span></button>)}
+          <button onClick={clearCell} className="w-20 h-10 rounded-xl shadow bg-white border">Erase</button>
+        </div>
+        <div className="mt-4 flex gap-2">
+          <button onClick={doHint} className="px-3 py-2 rounded-xl border shadow-sm bg-white">Hint</button>
+          <button onClick={doReset} className="px-3 py-2 rounded-xl border shadow-sm bg-white">Reset</button>
+          <button onClick={doSolve} className="px-3 py-2 rounded-xl border shadow-sm bg-white">Solve</button>
+        </div>
+      </div>;
+    }
+
+    // ===== Mount it =====
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<DailySudoku />);
+  </script>
+</body>
+</html>
