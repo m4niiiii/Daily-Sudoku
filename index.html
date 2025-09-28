@@ -114,21 +114,37 @@
       </div>;
     }
     function Cell({r,c,given,value,notes,selected,setSelected,conflict,peerHighlight}) {
-      const isSelected=selected.r===r&&selected.c===c;
-      const thickRight=(c+1)%3===0&&c!==8, thickBottom=(r+1)%3===0&&r!==8;
-      const base="w-12 h-12 flex items-center justify-center bg-white";
-      const baseBorder = "border border-neutral-300"; // light lines
-      const borderRight = thickRight ? "border-r-4 border-neutral-900" : "";
-      const borderBottom = thickBottom ? "border-b-4 border-neutral-900" : "";
-      const border = `${baseBorder} ${borderRight} ${borderBottom}`;
-      const selection=isSelected?"outline outline-2 outline-neutral-800 z-10":"";
-      const givenStyle=given?"text-neutral-900 font-semibold":"text-neutral-700";
-      const conflictStyle=conflict?"bg-red-100":"";
-      const matchStyle=peerHighlight?"bg-yellow-100":"";
-      return <button onClick={()=>setSelected({r,c})} className={`${base} ${border} ${selection} ${conflictStyle} ${matchStyle}`}>
-        {value!==0?<span className={`${given?givenStyle:""} text-xl`}>{value}</span>:<NotesGrid notes={notes}/>}
-      </button>;
-    }
+  const isSelected = selected.r===r && selected.c===c;
+  const thickRight = (c+1)%3===0 && c!==8;
+  const thickBottom = (r+1)%3===0 && r!==8;
+
+  const base = "relative w-12 h-12 flex items-center justify-center bg-white";
+  // keep all default lines thin and light
+  const border = "border border-neutral-300";
+  const selection = isSelected ? "outline outline-2 outline-neutral-800 z-10" : "";
+  const givenStyle = given ? "text-neutral-900 font-semibold" : "text-neutral-700";
+  const conflictStyle = conflict ? "bg-red-100" : "";
+  const matchStyle = peerHighlight ? "bg-yellow-100" : "";
+
+  return (
+    <button onClick={()=>setSelected({r,c})}
+            className={`${base} ${border} ${selection} ${conflictStyle} ${matchStyle}`}>
+      {/* content */}
+      {value!==0
+        ? <span className={`${given?givenStyle:""} text-xl`}>{value}</span>
+        : <NotesGrid notes={notes}/>}
+
+      {/* overlay dark subgrid lines */}
+      {thickRight && (
+        <span className="pointer-events-none absolute top-0 right-0 h-full w-2 bg-neutral-900" />
+      )}
+      {thickBottom && (
+        <span className="pointer-events-none absolute left-0 bottom-0 w-full h-2 bg-neutral-900" />
+      )}
+    </button>
+  );
+}
+
     function Board({initial,grid,selected,setSelected,notes,errorsOn,hasConflict,selectedVal}) {
       return <div className="grid grid-cols-9 grid-rows-9 select-none border-4 border-neutral-900 rounded-2xl overflow-hidden shadow-lg">
         {Array.from({length:9}).map((_,r)=>Array.from({length:9}).map((_,c)=>
