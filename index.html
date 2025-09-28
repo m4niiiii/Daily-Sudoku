@@ -146,7 +146,7 @@
 }
 
     function Board({initial,grid,selected,setSelected,notes,errorsOn,hasConflict,selectedVal}) {
-      return <div className="grid grid-cols-9 grid-rows-9 select-none border-4 border-neutral-900 rounded-2xl overflow-hidden shadow-lg">
+      return <div className="grid grid-cols-9 grid-rows-9 select-none border-8 border-neutral-900 rounded-2xl overflow-hidden shadow-lg">
         {Array.from({length:9}).map((_,r)=>Array.from({length:9}).map((_,c)=>
           <Cell key={`${r}-${c}`} r={r} c={c} given={initial[r][c]!==0} value={grid[r][c]} notes={notes[r][c]}
             selected={selected} setSelected={setSelected} conflict={errorsOn&&hasConflict(r,c,grid[r][c])}
